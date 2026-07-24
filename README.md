@@ -70,6 +70,8 @@ The in-memory live event stream is authoritative during a run. Reconnect uses mo
 
 Pi `0.79.8` deliberately defers creating a new JSONL file until the session contains its first assistant response. An untouched empty chat therefore does not survive process restart; after the first completed Pi response, it is a normal native session and is freshly listed/resumable.
 
+The exact `0.79.8` package currently brings two shrinkwrapped npm advisories (`brace-expansion` high-severity DoS and `protobufjs` moderate-severity DoS). They remain pinned because silently replacing Pi’s shrinkwrapped dependency tree would break the installed-CLI compatibility guarantee. Move to a Pi release containing patched transitives when available, or review an explicit override separately.
+
 ## Pi paths, settings, and trust
 
 - Config/agent directory: resolved by Pi’s `getAgentDir()`, respecting `PI_CODING_AGENT_DIR`
