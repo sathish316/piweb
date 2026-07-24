@@ -104,4 +104,30 @@ test.describe("mobile workbench", () => {
     await page.keyboard.press("Escape");
     await expect(page.getByLabel("Sessions")).not.toHaveClass(/open/);
   });
+
+  test("keeps the focused composer and Send button inside a keyboard-sized viewport", async ({ page }) => {
+    await page.goto("/");
+    await page.locator("#workspace-welcome").fill(workspace);
+    await page.getByRole("button", { name: "Open project" }).click();
+    await page.getByRole("button", { name: "Start a new chat" }).click();
+    await page.setViewportSize({ width: 390, height: 430 });
+    await page.getByLabel("Message Pi").fill("Keyboard layout");
+
+    const bounds = await page.evaluate(() => {
+      const composer = document.querySelector(".composer")?.getBoundingClientRect();
+      const send = document.querySelector(".send-button")?.getBoundingClientRect();
+      return {
+        composerRight: composer?.right ?? Number.POSITIVE_INFINITY,
+        composerBottom: composer?.bottom ?? Number.POSITIVE_INFINITY,
+        sendRight: send?.right ?? Number.POSITIVE_INFINITY,
+        sendBottom: send?.bottom ?? Number.POSITIVE_INFINITY,
+      };
+    });
+
+    expect(bounds.composerRight).toBeLessThanOrEqual(390);
+    expect(bounds.composerBottom).toBeLessThanOrEqual(430);
+    expect(bounds.sendRight).toBeLessThanOrEqual(390);
+    expect(bounds.sendBottom).toBeLessThanOrEqual(430);
+    await expect(page.getByRole("button", { name: /Send/ })).toBeVisible();
+  });
 });
