@@ -4,10 +4,42 @@
   "private": true,
   "type": "module",
   "description": "Private local web control surface for Pi",
+  "scripts": {
+    "dev": "tsx watch src/server/index.ts",
+    "typecheck": "tsc -p tsconfig.server.json --noEmit && tsc -p tsconfig.client.json --noEmit",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "build": "npm run build:client && npm run build:server",
+    "build:client": "vite build",
+    "build:server": "tsc -p tsconfig.server.json",
+    "start": "node dist/server/index.js",
+    "smoke:real-pi": "PI_WEB_ADAPTER=real tsx scripts/real-pi-smoke.ts"
+  },
   "engines": {
     "node": ">=22.19.0"
   },
   "dependencies": {
-    "@earendil-works/pi-coding-agent": "0.79.8"
+    "@earendil-works/pi-coding-agent": "0.79.8",
+    "express": "5.2.1",
+    "helmet": "8.3.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "react-markdown": "10.1.0",
+    "remark-gfm": "4.0.1",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.61.1",
+    "@types/express": "5.0.6",
+    "@types/node": "26.1.1",
+    "@types/react": "19.2.17",
+    "@types/react-dom": "19.2.3",
+    "@types/supertest": "7.2.1",
+    "@vitejs/plugin-react": "6.0.4",
+    "supertest": "7.2.2",
+    "tsx": "4.23.1",
+    "typescript": "7.0.2",
+    "vite": "8.1.5",
+    "vitest": "4.1.10"
   }
 }
