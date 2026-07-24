@@ -273,7 +273,7 @@ function Welcome(props: { path: string; setPath: (value: string) => void; open: 
         </div>
       </form>
       <p className="root-note">
-        Type two characters to find a project inside {props.roots.length === 1 ? "the allowed root" : `${props.roots.length} allowed roots`}.
+        Type two characters to fuzzy-find a project inside {props.roots.length === 1 ? "the allowed root" : `${props.roots.length} allowed roots`}.
       </p>
     </section>
   );

@@ -74,6 +74,8 @@ describe("HTTP security and flows", () => {
     const suggested = await request(app).get("/api/projects/suggestions").query({ query: "pr" }).expect(200);
     const canonicalWorkspace = join(store.roots[0] ?? base, "project");
     expect(suggested.body.suggestions).toEqual([canonicalWorkspace, join(store.roots[0] ?? base, "project-two")]);
+    const fuzzy = await request(app).get("/api/projects/suggestions").query({ query: "tw" }).expect(200);
+    expect(fuzzy.body.suggestions).toEqual([join(store.roots[0] ?? base, "project-two")]);
 
     await request(app).put("/api/settings").send({ workspaceRoots: [workspace] }).expect(403);
     const updated = await request(app)

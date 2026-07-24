@@ -83,7 +83,7 @@ export class WorkspaceStore {
       }
     }
 
-    const matches: Array<{ path: string; canonical: string }> = [];
+    const matches: Array<{ path: string; canonical: string; score: number }> = [];
     const seen = new Set<string>();
     for (const parent of parents) {
       let entries;
@@ -92,10 +92,12 @@ export class WorkspaceStore {
       } catch {
         continue;
       }
-      const candidates = entries
-        .filter((entry) => (entry.isDirectory() || entry.isSymbolicLink()) && entry.name.toLowerCase().startsWith(fragment.toLowerCase()))
-        .sort((left, right) => left.name.localeCompare(right.name));
-      for (const entry of candidates) {
+      const candidates = entries.flatMap((entry) => {
+        if (!entry.isDirectory() && !entry.isSymbolicLink()) return [];
+        const score = fuzzyScore(entry.name, fragment);
+        return score === undefined ? [] : [{ entry, score }];
+      }).sort((left, right) => left.score - right.score || left.entry.name.localeCompare(right.entry.name)).slice(0, 48);
+      for (const { entry, score } of candidates) {
         const candidate = join(parent, entry.name);
         try {
           const canonical = await realpath(candidate);
@@ -105,7 +107,7 @@ export class WorkspaceStore {
             && this._roots.some((root) => isDescendant(root, canonical))
           ) {
             seen.add(canonical);
-            matches.push({ path: candidate, canonical });
+            matches.push({ path: candidate, canonical, score });
           }
         } catch {
           // Entries can disappear while suggestions are being built.
@@ -113,7 +115,7 @@ export class WorkspaceStore {
       }
     }
     return matches
-      .sort((left, right) => basename(left.path).localeCompare(basename(right.path)) || left.path.localeCompare(right.path))
+      .sort((left, right) => left.score - right.score || basename(left.path).localeCompare(basename(right.path)) || left.path.localeCompare(right.path))
       .slice(0, 12)
       .map((match) => match.path);
   }
@@ -129,6 +131,30 @@ export function settingsFilePath(): string {
 export function isDescendant(root: string, candidate: string): boolean {
   const rel = relative(root, candidate);
   return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
+}
+
+function fuzzyScore(candidate: string, query: string): number | undefined {
+  const name = candidate.toLocaleLowerCase();
+  const needle = query.toLocaleLowerCase();
+  if (name === needle) return 0;
+  if (name.startsWith(needle)) return 10 + name.length - needle.length;
+
+  const containedAt = name.indexOf(needle);
+  if (containedAt >= 0) return 100 + containedAt * 4 + name.length - needle.length;
+
+  let cursor = 0;
+  let first = -1;
+  let previous = -1;
+  let gaps = 0;
+  for (const character of needle) {
+    const found = name.indexOf(character, cursor);
+    if (found < 0) return undefined;
+    if (first < 0) first = found;
+    if (previous >= 0) gaps += found - previous - 1;
+    previous = found;
+    cursor = found + 1;
+  }
+  return 200 + first * 3 + gaps * 5 + name.length - needle.length;
 }
 
 export interface SecurityContext {

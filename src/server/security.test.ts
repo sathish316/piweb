@@ -30,7 +30,7 @@ describe("workspace containment", () => {
     await expect(store.open(allowed)).resolves.toMatchObject({ path: store.roots[0] });
   });
 
-  it("suggests only matching directories after two characters", async () => {
+  it("ranks fuzzy directory matches after two characters", async () => {
     const base = await mkdtemp(join(tmpdir(), "pi-web-suggest-"));
     cleanup.push(base);
     const allowed = join(base, "allowed");
@@ -44,7 +44,10 @@ describe("workspace containment", () => {
 
     await expect(store.suggest("p")).resolves.toEqual([]);
     await expect(store.suggest("pr")).resolves.toEqual([
+      join(store.roots[0] ?? allowed, "project-beta"),
       join(store.roots[0] ?? allowed, "project-alpha"),
+    ]);
+    await expect(store.suggest("pb")).resolves.toEqual([
       join(store.roots[0] ?? allowed, "project-beta"),
     ]);
     await expect(store.suggest(join(outside, "pro"))).resolves.toEqual([]);
