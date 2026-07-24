@@ -69,9 +69,9 @@ describe("HTTP security and flows", () => {
   it("autocompletes allowed project folders and persists validated root changes", async () => {
     const context = createSecurityContext();
     const { app } = createApp({ adapter, workspaceStore: store, security: context });
-    const short = await request(app).get("/api/projects/suggestions").query({ query: "pr" }).expect(200);
+    const short = await request(app).get("/api/projects/suggestions").query({ query: "p" }).expect(200);
     expect(short.body.suggestions).toEqual([]);
-    const suggested = await request(app).get("/api/projects/suggestions").query({ query: "pro" }).expect(200);
+    const suggested = await request(app).get("/api/projects/suggestions").query({ query: "pr" }).expect(200);
     const canonicalWorkspace = join(store.roots[0] ?? base, "project");
     expect(suggested.body.suggestions).toEqual([canonicalWorkspace, join(store.roots[0] ?? base, "project-two")]);
 

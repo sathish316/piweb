@@ -70,7 +70,7 @@ export class WorkspaceStore {
   async suggest(query: string): Promise<string[]> {
     const input = query.trim();
     const fragment = basename(input);
-    if (fragment.length < 3) return [];
+    if (fragment.length < 2) return [];
 
     let parents = this._roots;
     if (isAbsolute(input)) {

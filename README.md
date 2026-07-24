@@ -89,7 +89,7 @@ On first run, before a settings file exists, roots are seeded from `WORKSPACE_RO
 WORKSPACE_ROOTS="$HOME:/Volumes/Projects" npm start
 ```
 
-Add directories that directly contain projects, such as `~/projects`. On the project home, typing the first three characters of a project name autocompletes matching child directories inside the allowed roots. An absolute partial path can also autocomplete within an allowed parent. The project switcher directly below **New chat** returns to this home from any chat.
+Add directories that directly contain projects, such as `~/projects`. On the project home, typing the first two characters of a project name autocompletes matching child directories inside the allowed roots. An absolute partial path can also autocomplete within an allowed parent. The project switcher directly below **New chat** returns to this home from any chat.
 
 Workspace candidates and configured roots are canonicalized with `realpath` and checked using filesystem-aware descendant rules. Symlink and string-prefix escapes are rejected. `PI_WORKBENCH_SETTINGS_PATH` can point to a different non-secret settings file for an isolated installation or test environment.
 

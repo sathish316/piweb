@@ -23,7 +23,7 @@ test.describe("desktop workbench", () => {
     await expect(page.getByText("Settings saved")).toBeVisible();
     await page.getByRole("button", { name: "Back to projects" }).click();
 
-    await page.locator("#workspace-welcome").fill("piw");
+    await page.locator("#workspace-welcome").fill("pi");
     await page.getByRole("option", { name: new RegExp(`piweb.*${workspace.replaceAll("/", "\\/")}`) }).click();
     await expect(page.locator("#workspace-welcome")).toHaveValue(workspace);
     await page.getByRole("button", { name: "Open project" }).click();

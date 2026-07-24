@@ -30,7 +30,7 @@ describe("workspace containment", () => {
     await expect(store.open(allowed)).resolves.toMatchObject({ path: store.roots[0] });
   });
 
-  it("suggests only matching directories after three characters", async () => {
+  it("suggests only matching directories after two characters", async () => {
     const base = await mkdtemp(join(tmpdir(), "pi-web-suggest-"));
     cleanup.push(base);
     const allowed = join(base, "allowed");
@@ -42,8 +42,8 @@ describe("workspace containment", () => {
     await symlink(outside, join(allowed, "project-escape"));
     const store = await WorkspaceStore.create(allowed);
 
-    await expect(store.suggest("pr")).resolves.toEqual([]);
-    await expect(store.suggest("pro")).resolves.toEqual([
+    await expect(store.suggest("p")).resolves.toEqual([]);
+    await expect(store.suggest("pr")).resolves.toEqual([
       join(store.roots[0] ?? allowed, "project-alpha"),
       join(store.roots[0] ?? allowed, "project-beta"),
     ]);
