@@ -59,7 +59,7 @@ test.describe("desktop workbench", () => {
     await page.locator("#workspace-welcome").fill(workspace);
     await page.getByRole("button", { name: "Open project" }).click();
     await page.locator(".session-row").filter({ hasText: "Remember this session" }).click();
-    await expect(page.getByText("Remember this session", { exact: true })).toHaveCount(1);
+    await expect(page.locator(".conversation").getByText("Remember this session", { exact: true })).toHaveCount(1);
   });
 
   test("recovers its SSE connection", async ({ page, context }) => {
@@ -78,30 +78,37 @@ test.describe("desktop workbench", () => {
 test.describe("mobile workbench", () => {
   test.skip(({ isMobile }) => !isMobile, "mobile-only flow");
 
-  test("uses the drawer, explicit composer controls, and streams at 390px", async ({ page }) => {
+  test("progresses from project selection to chats to streaming at 390px", async ({ page }) => {
     await page.goto("/");
-    await page.getByRole("button", { name: "Open session drawer" }).click();
-    await expect(page.getByLabel("Sessions")).toHaveClass(/open/);
-    await page.locator(".drawer-close").click();
+    await expect(page.getByRole("heading", { name: /Pick up the work/ })).toBeVisible();
     await page.locator("#workspace-welcome").fill(workspace);
     await page.getByRole("button", { name: "Open project" }).click();
+    await expect(page.getByRole("region", { name: "Project chats" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "piweb" })).toBeVisible();
-    await page.getByRole("button", { name: "Open session drawer" }).click();
-    await page.getByRole("button", { name: "New chat", exact: true }).click();
+    await page.getByRole("button", { name: /Start a new chat/ }).click();
+    await expect(page.getByRole("button", { name: "Back to chats" })).toBeVisible();
     await page.getByLabel("Message Pi").fill("Mobile stream");
     await page.getByRole("button", { name: /Send/ }).click();
     await expect(page.locator(".tool-row").first()).toBeVisible();
     await expect(page.getByText(/settled state are working/)).toBeVisible();
+    await page.getByRole("button", { name: "Back to chats" }).click();
+    await expect(page.getByRole("heading", { name: "Recent chats" })).toBeVisible();
     const bodyWidth = await page.evaluate(() => document.body.scrollWidth);
     expect(bodyWidth).toBeLessThanOrEqual(390);
   });
 
-  test("drawer closes with Escape and focus remains keyboard-accessible", async ({ page }) => {
+  test("uses keyboard-accessible page navigation for settings and projects", async ({ page }) => {
     await page.goto("/");
-    await page.getByRole("button", { name: "Open session drawer" }).focus();
+    await page.getByRole("button", { name: "Open settings" }).focus();
     await page.keyboard.press("Enter");
-    await expect(page.getByLabel("Sessions")).toHaveClass(/open/);
-    await page.keyboard.press("Escape");
-    await expect(page.getByLabel("Sessions")).not.toHaveClass(/open/);
+    await expect(page.getByRole("heading", { name: "Workspace access" })).toBeVisible();
+    await page.getByRole("button", { name: "Back to projects" }).first().focus();
+    await page.keyboard.press("Enter");
+    await expect(page.getByRole("heading", { name: /Pick up the work/ })).toBeVisible();
+    await page.locator("#workspace-welcome").fill(workspace);
+    await page.getByRole("button", { name: "Open project" }).click();
+    await page.getByRole("button", { name: "Back to projects" }).focus();
+    await page.keyboard.press("Enter");
+    await expect(page.getByRole("heading", { name: /Pick up the work/ })).toBeVisible();
   });
 });

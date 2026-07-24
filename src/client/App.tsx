@@ -23,7 +23,6 @@ export function App() {
   const [connection, setConnection] = useState<ConnectionState>("disconnected");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const [drawerOpen, setDrawerOpen] = useState(false);
   const [surface, setSurface] = useState<Surface>("home");
 
   useEffect(() => {
@@ -75,7 +74,6 @@ export function App() {
               activeChatId: value.chatId,
             }, ...current.sessions],
       } : current);
-      setDrawerOpen(false);
     }
   }
 
@@ -85,18 +83,25 @@ export function App() {
     if (value) {
       setChat(value);
       setSurface("workspace");
-      setDrawerOpen(false);
     }
   }
 
   function showHome() {
     setSurface("home");
-    setDrawerOpen(false);
   }
 
   function showSettings() {
     setSurface("settings");
-    setDrawerOpen(false);
+  }
+
+  function showWorkspace() {
+    if (!workspace) {
+      showHome();
+      return;
+    }
+    setChat(undefined);
+    setSurface("workspace");
+    setConnection("disconnected");
   }
 
   async function handleSaveSettings(workspaceRoots: string[]) {
@@ -114,7 +119,6 @@ export function App() {
   return (
     <div className="app-shell">
       <Sidebar
-        open={drawerOpen}
         workspace={workspace}
         onNew={() => void handleNew()}
         onResume={(session) => void handleResume(session)}
@@ -123,17 +127,16 @@ export function App() {
         activeSurface={surface}
         rootCount={boot?.workspaceRoots.length ?? 0}
         busy={busy}
-        close={() => setDrawerOpen(false)}
       />
-      {drawerOpen && <button className="scrim" aria-label="Close session drawer" onClick={() => setDrawerOpen(false)} />}
       <main className="main-column">
-        <header className="mobile-bar">
-          <button className="icon-button" aria-label="Open session drawer" onClick={() => setDrawerOpen(true)}>
-            <MenuIcon />
-          </button>
-          <span className="mobile-title">Pi Workbench</span>
-          {chat ? <ConnectionBadge state={connection} compact /> : <span className="mobile-bar-spacer" aria-hidden="true" />}
-        </header>
+        <MobileBar
+          surface={surface}
+          workspace={workspace}
+          chat={chat}
+          connection={connection}
+          back={surface === "settings" ? showHome : surface === "workspace" && chat ? showWorkspace : surface === "workspace" ? showHome : undefined}
+          settings={surface === "home" ? showSettings : undefined}
+        />
         {error && (
           <div className="global-error" role="alert">
             <span>{error}</span>
@@ -150,7 +153,15 @@ export function App() {
         ) : surface === "home" || !workspace ? (
           <Welcome path={workspacePath} setPath={setWorkspacePath} open={() => void handleOpenWorkspace()} busy={busy} roots={boot?.workspaceRoots ?? []} />
         ) : !chat ? (
-          <EmptyWorkspace workspace={workspace} onNew={() => void handleNew()} />
+          <>
+            <EmptyWorkspace workspace={workspace} onNew={() => void handleNew()} />
+            <MobileWorkspace
+              workspace={workspace}
+              busy={busy}
+              onNew={() => void handleNew()}
+              onResume={(session) => void handleResume(session)}
+            />
+          </>
         ) : (
           <ChatView
             chat={chat}
@@ -167,7 +178,6 @@ export function App() {
 }
 
 function Sidebar(props: {
-  open: boolean;
   workspace: WorkspaceResponse | undefined;
   onNew: () => void;
   onResume: (session: SessionSummary) => void;
@@ -176,31 +186,17 @@ function Sidebar(props: {
   activeSurface: Surface;
   rootCount: number;
   busy: boolean;
-  close: () => void;
 }) {
   const [query, setQuery] = useState("");
   const sessions = props.workspace?.sessions.filter((session) => {
     const haystack = `${session.name ?? ""} ${session.firstMessage}`.toLowerCase();
     return haystack.includes(query.toLowerCase());
   }) ?? [];
-  const drawerRef = useRef<HTMLElement>(null);
-
-  useEffect(() => {
-    if (!props.open) return;
-    drawerRef.current?.focus();
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") props.close();
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [props.open, props.close]);
-
   return (
-    <aside ref={drawerRef} tabIndex={-1} aria-label="Sessions" className={`sidebar ${props.open ? "open" : ""}`}>
+    <aside aria-label="Sessions" className="sidebar">
       <div className="brand">
         <span className="brand-mark" aria-hidden="true">π</span>
         <div><strong>Pi Workbench</strong><small>Local control surface</small></div>
-        <button className="drawer-close icon-button" aria-label="Close session drawer" onClick={props.close}>×</button>
       </div>
       <button className="new-chat" onClick={props.onNew} disabled={!props.workspace || props.busy}>
         <span aria-hidden="true">＋</span> New chat
@@ -250,6 +246,119 @@ function Sidebar(props: {
         <div className="sidebar-foot">Bound to this machine · no cloud relay</div>
       </div>
     </aside>
+  );
+}
+
+function MobileBar(props: {
+  surface: Surface;
+  workspace: WorkspaceResponse | undefined;
+  chat: ChatSnapshot | undefined;
+  connection: ConnectionState;
+  back: (() => void) | undefined;
+  settings: (() => void) | undefined;
+}) {
+  const title = props.surface === "settings"
+    ? "Settings"
+    : props.surface === "workspace" && props.workspace
+      ? props.chat?.name || basename(props.workspace.path)
+      : "Pi Workbench";
+  const backLabel = props.surface === "workspace" && props.chat ? "Back to chats" : "Back to projects";
+
+  return (
+    <header className="mobile-bar">
+      {props.back ? (
+        <button className="mobile-nav-action" aria-label={backLabel} onClick={props.back}>
+          <span aria-hidden="true">←</span>
+        </button>
+      ) : (
+        <span className="mobile-home-mark" aria-hidden="true">π</span>
+      )}
+      <span className="mobile-title">{title}</span>
+      {props.chat ? (
+        <ConnectionBadge state={props.connection} compact />
+      ) : props.settings ? (
+        <button className="mobile-nav-action" aria-label="Open settings" onClick={props.settings}>
+          <span aria-hidden="true">⚙</span>
+        </button>
+      ) : (
+        <span className="mobile-bar-spacer" aria-hidden="true" />
+      )}
+    </header>
+  );
+}
+
+function MobileWorkspace(props: {
+  workspace: WorkspaceResponse;
+  busy: boolean;
+  onNew: () => void;
+  onResume: (session: SessionSummary) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const sessions = props.workspace.sessions.filter((session) => {
+    const haystack = `${session.name ?? ""} ${session.firstMessage}`.toLowerCase();
+    return haystack.includes(query.toLowerCase());
+  });
+  const unavailable = props.workspace.models.length === 0;
+
+  return (
+    <section className="mobile-workspace" aria-label="Project chats">
+      <div className="mobile-project-heading">
+        <p className="eyebrow">Current project</p>
+        <h1>{basename(props.workspace.path)}</h1>
+        <code>{props.workspace.path}</code>
+      </div>
+      {props.workspace.diagnostics.map((diagnostic) => <div className="diagnostic" key={diagnostic}>{diagnostic}</div>)}
+      {unavailable && (
+        <div className="diagnostic">
+          No authenticated model is available. Run Pi locally and use /login, then reopen this project.
+        </div>
+      )}
+      <button className="mobile-new-chat" onClick={props.onNew} disabled={props.busy || unavailable}>
+        <span className="mobile-new-mark" aria-hidden="true">＋</span>
+        <span>
+          <strong>Start a new chat</strong>
+          <small>Create a native Pi session</small>
+        </span>
+        <span aria-hidden="true">→</span>
+      </button>
+      <div className="mobile-chat-heading">
+        <div>
+          <p className="eyebrow">Continue working</p>
+          <h2>Recent chats</h2>
+        </div>
+        <span>{props.workspace.sessions.length}</span>
+      </div>
+      {props.workspace.sessions.length > 0 && (
+        <input
+          className="mobile-chat-search"
+          type="search"
+          aria-label="Search project chats"
+          placeholder="Search chats"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+        />
+      )}
+      <nav className="mobile-chat-list" aria-label="Project Pi sessions">
+        {sessions.map((session) => (
+          <button key={session.id} onClick={() => props.onResume(session)} disabled={props.busy}>
+            <span>
+              <strong>{session.name || session.firstMessage || "Empty session"}</strong>
+              <small>{formatRelative(session.updatedAt)} · {session.messageCount} messages</small>
+            </span>
+            <span aria-hidden="true">→</span>
+          </button>
+        ))}
+        {props.workspace.sessions.length === 0 && (
+          <div className="mobile-chats-empty">
+            <span aria-hidden="true">_</span>
+            <p>No saved chats yet. Start one above.</p>
+          </div>
+        )}
+        {props.workspace.sessions.length > 0 && sessions.length === 0 && (
+          <div className="mobile-chats-empty"><p>No matching chats.</p></div>
+        )}
+      </nav>
+    </section>
   );
 }
 
@@ -869,7 +978,6 @@ function upsert(items: ConversationItem[], item: ConversationItem): Conversation
 function ConnectionBadge({ state, compact = false }: { state: ConnectionState; compact?: boolean }) {
   return <div className={`connection ${state} ${compact ? "compact" : ""}`} title={`Stream ${state}`}><i />{!compact && <span>{capitalize(state)}</span>}</div>;
 }
-function MenuIcon() { return <span aria-hidden="true" className="menu-icon"><i /><i /><i /></span>; }
 function basename(path: string) { return path.replace(/[\\/]+$/, "").split(/[\\/]/).pop() || path; }
 function projectFragment(path: string) { return path.trim().split(/[\\/]/).pop() ?? ""; }
 function capitalize(value: string) { return value.charAt(0).toUpperCase() + value.slice(1); }
