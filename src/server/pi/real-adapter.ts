@@ -269,6 +269,7 @@ class RealPiChat implements PiChat {
     if (!resolve) throw new Error("Extension request is no longer active");
     this.pendingDialogs.delete(requestId);
     this.extensionRequest = undefined;
+    this.emit({ type: "extensionClosed", requestId });
     resolve(response);
   }
 

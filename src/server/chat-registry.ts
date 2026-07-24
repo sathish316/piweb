@@ -171,6 +171,9 @@ export class ChatRegistry {
       case "extensionRequest":
         browserEvent = { ...base, type: "extension_request", request: event.request };
         break;
+      case "extensionClosed":
+        browserEvent = { ...base, type: "extension_closed", requestId: event.requestId };
+        break;
       case "metadata":
         browserEvent = {
           ...base,

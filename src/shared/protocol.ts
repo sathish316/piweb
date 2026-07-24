@@ -116,6 +116,7 @@ export const browserEventSchema = z.discriminatedUnion("type", [
   }),
   eventBase.extend({ type: z.literal("notice"), item: noticeItemSchema }),
   eventBase.extend({ type: z.literal("extension_request"), request: extensionRequestSchema }),
+  eventBase.extend({ type: z.literal("extension_closed"), requestId: z.string() }),
   eventBase.extend({
     type: z.literal("metadata"),
     name: z.string().optional(),

@@ -22,6 +22,7 @@ export type AdapterEvent =
   | { type: "queue"; steering: number; followUp: number }
   | { type: "notice"; level: "info" | "warning" | "error"; text: string }
   | { type: "extensionRequest"; request: ExtensionRequest }
+  | { type: "extensionClosed"; requestId: string }
   | { type: "metadata" };
 
 export interface PiWorkspace {

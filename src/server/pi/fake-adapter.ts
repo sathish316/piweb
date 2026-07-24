@@ -242,7 +242,9 @@ class FakePiChat implements PiChat {
   async respondToExtension(requestId: string, response: { value?: string; confirmed?: boolean; cancelled?: boolean }): Promise<void> {
     if (this.extensionRequest?.id !== requestId) throw new Error("Extension request is no longer active");
     const result = response.cancelled ? "cancelled" : response.confirmed ? "confirmed" : response.value ?? "dismissed";
+    const closedId = this.extensionRequest.id;
     this.extensionRequest = undefined;
+    this.emit({ type: "extensionClosed", requestId: closedId });
     this.emit({ type: "notice", level: "info", text: `Extension dialog ${result}.` });
     this.setStatus("idle");
   }

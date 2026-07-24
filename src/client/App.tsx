@@ -58,6 +58,19 @@ export function App() {
     const value = await run(() => api.createChat(workspace.workspaceId));
     if (value) {
       setChat(value);
+      setWorkspace((current) => current ? {
+        ...current,
+        sessions: current.sessions.some((session) => session.id === value.sessionId)
+          ? current.sessions
+          : [{
+              id: value.sessionId,
+              firstMessage: "Empty session",
+              updatedAt: new Date().toISOString(),
+              messageCount: 0,
+              cwd: value.cwd,
+              activeChatId: value.chatId,
+            }, ...current.sessions],
+      } : current);
       setDrawerOpen(false);
     }
   }
@@ -388,7 +401,7 @@ function SafeMarkdown({ text }: { text: string }) {
 
 export function safeUrl(value: string): string {
   try {
-    const url = new URL(value, window.location.origin);
+    const url = new URL(value, "http://localhost");
     if (["http:", "https:", "mailto:"].includes(url.protocol)) return value;
   } catch {
     return "";
@@ -529,13 +542,17 @@ function useChatEvents(
   useEffect(() => {
     let failures = 0;
     const source = new EventSource(`/api/chats/${chatId}/events`);
+    const onOffline = () => setConnection("reconnecting");
+    const onOnline = () => setConnection(source.readyState === EventSource.OPEN ? "connected" : "reconnecting");
+    window.addEventListener("offline", onOffline);
+    window.addEventListener("online", onOnline);
     source.onopen = () => { failures = 0; setConnection("connected"); };
     source.onerror = () => {
       failures += 1;
       setConnection(failures > 3 ? "disconnected" : "reconnecting");
     };
     source.onmessage = (message) => handle(JSON.parse(message.data) as BrowserEvent);
-    for (const type of ["snapshot", "run_status", "item", "assistant_delta", "thinking_delta", "assistant_end", "tool_update", "queue_update", "notice", "extension_request", "metadata"]) {
+    for (const type of ["snapshot", "run_status", "item", "assistant_delta", "thinking_delta", "assistant_end", "tool_update", "queue_update", "notice", "extension_request", "extension_closed", "metadata"]) {
       source.addEventListener(type, (message) => handle(JSON.parse((message as MessageEvent<string>).data) as BrowserEvent));
     }
     function flush() {
@@ -567,6 +584,8 @@ function useChatEvents(
     }
     return () => {
       source.close();
+      window.removeEventListener("offline", onOffline);
+      window.removeEventListener("online", onOnline);
       if (frame.current !== undefined) cancelAnimationFrame(frame.current);
       setConnection("disconnected");
     };
@@ -588,6 +607,10 @@ function reduceEvent(current: ChatSnapshot | undefined, event: BrowserEvent, cha
   };
   if (event.type === "queue_update") return { ...current, queue: { steering: event.steering, followUp: event.followUp } };
   if (event.type === "extension_request") return { ...current, extensionRequest: event.request };
+  if (event.type === "extension_closed") {
+    const { extensionRequest: _closed, ...rest } = current;
+    return rest as ChatSnapshot;
+  }
   if (event.type === "metadata") return {
     ...current,
     ...(event.name ? { name: event.name } : {}),
