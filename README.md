@@ -80,7 +80,7 @@ The exact `0.79.8` package currently brings two shrinkwrapped npm advisories (`b
 - Native sessions are normally under its `sessions/` child, but the dashboard never hard-codes that root
 - The selected canonical project path is Pi’s `cwd`
 
-Open **Settings** at the bottom of the desktop sidebar or from the mobile project header to configure one or more allowed project folders. Settings are stored locally as non-secret JSON at `~/Library/Application Support/Pi Workbench/settings.json` on macOS (the platform config directory is used on Linux and Windows). Saving a narrower list immediately revokes opaque workspace IDs and live dashboard chats that fall outside the new roots.
+Open **Settings** at the bottom of the sidebar to configure one or more allowed project folders. Settings are stored locally as non-secret JSON at `~/Library/Application Support/Pi Workbench/settings.json` on macOS (the platform config directory is used on Linux and Windows). Saving a narrower list immediately revokes opaque workspace IDs and live dashboard chats that fall outside the new roots.
 
 On first run, before a settings file exists, roots are seeded from `WORKSPACE_ROOTS`. It is platform path-delimited and defaults to the home directory:
 
@@ -151,7 +151,7 @@ npm run test:e2e        # Chromium desktop and mobile
 npm run build           # production frontend + server
 ```
 
-The tests cover canonical workspace containment and symlink escapes, path-prefix traps, persisted allowed roots, bounded project autocomplete, secret redaction, bounded outputs, single session ownership, stream replay IDs, queue/abort/settled behavior, extension dialog round trips, request limits, local/Tailscale origin and CSRF checks, URL schemes, desktop settings/project switching/streaming/resume/stop, the mobile Projects → Chats → Stream flow, reconnection, and keyboard interaction.
+The tests cover canonical workspace containment and symlink escapes, path-prefix traps, persisted allowed roots, bounded project autocomplete, secret redaction, bounded outputs, single session ownership, stream replay IDs, queue/abort/settled behavior, extension dialog round trips, request limits, local/Tailscale origin and CSRF checks, URL schemes, desktop settings/project switching/streaming/resume/stop, mobile drawer/composer, reconnection, and keyboard interaction.
 
 An explicit, no-prompt real Pi smoke allocates a native session and lists/resumes an existing saved session without contacting a model:
 
