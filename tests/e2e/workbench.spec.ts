@@ -1,6 +1,8 @@
 import { expect, test } from "@playwright/test";
+import { dirname } from "node:path";
 
 const workspace = process.cwd();
+const workspaceRoot = dirname(workspace);
 
 async function openWorkspace(page: import("@playwright/test").Page) {
   await page.goto("/");
@@ -11,6 +13,24 @@ async function openWorkspace(page: import("@playwright/test").Page) {
 
 test.describe("desktop workbench", () => {
   test.skip(({ isMobile }) => isMobile, "desktop-only flow");
+
+  test("configures roots, autocompletes a project, and returns home to switch", async ({ page }) => {
+    await page.goto("/");
+    await page.getByRole("button", { name: /^Settings/ }).click();
+    await expect(page.getByRole("heading", { name: "Workspace access" })).toBeVisible();
+    await page.getByRole("textbox", { name: "Allowed folder 1" }).fill(workspaceRoot);
+    await page.getByRole("button", { name: "Save changes" }).click();
+    await expect(page.getByText("Settings saved")).toBeVisible();
+    await page.getByRole("button", { name: "Back to projects" }).click();
+
+    await page.locator("#workspace-welcome").fill("piw");
+    await page.getByRole("option", { name: new RegExp(`piweb.*${workspace.replaceAll("/", "\\/")}`) }).click();
+    await expect(page.locator("#workspace-welcome")).toHaveValue(workspace);
+    await page.getByRole("button", { name: "Open project" }).click();
+    await expect(page.getByRole("heading", { name: "piweb" })).toBeVisible();
+    await page.getByRole("button", { name: /Switch project/ }).click();
+    await expect(page.getByRole("heading", { name: /Pick up the work/ })).toBeVisible();
+  });
 
   test("creates a chat, streams thinking and tool activity, and stops", async ({ page }) => {
     await openWorkspace(page);
@@ -62,9 +82,9 @@ test.describe("mobile workbench", () => {
     await page.goto("/");
     await page.getByRole("button", { name: "Open session drawer" }).click();
     await expect(page.getByLabel("Sessions")).toHaveClass(/open/);
-    await page.getByLabel("Project path").fill(workspace);
-    await page.getByLabel("Sessions").getByRole("button", { name: "Open", exact: true }).click();
     await page.locator(".drawer-close").click();
+    await page.locator("#workspace-welcome").fill(workspace);
+    await page.getByRole("button", { name: "Open project" }).click();
     await expect(page.getByRole("heading", { name: "piweb" })).toBeVisible();
     await page.getByRole("button", { name: "Open session drawer" }).click();
     await page.getByRole("button", { name: "New chat", exact: true }).click();

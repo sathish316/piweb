@@ -129,6 +129,12 @@ export const browserEventSchema = z.discriminatedUnion("type", [
 export type BrowserEvent = z.infer<typeof browserEventSchema>;
 
 export const openWorkspaceSchema = z.object({ path: z.string().trim().min(1).max(4096) }).strict();
+export const projectSuggestionQuerySchema = z.object({
+  query: z.string().trim().max(4096),
+}).strict();
+export const updateSettingsSchema = z.object({
+  workspaceRoots: z.array(z.string().trim().min(1).max(4096)).min(1).max(16),
+}).strict();
 export const createChatSchema = z.object({ workspaceId: z.string().min(8).max(128) }).strict();
 export const resumeChatSchema = z.object({ workspaceId: z.string().min(8).max(128), sessionId: z.string().min(8).max(128) }).strict();
 export const sendMessageSchema = z.object({
@@ -154,6 +160,15 @@ export interface BootstrapResponse {
   csrfToken: string;
   workspaceHints: string[];
   workspaceRoots: string[];
+}
+
+export interface ProjectSuggestionsResponse {
+  suggestions: string[];
+}
+
+export interface SettingsResponse {
+  workspaceRoots: string[];
+  revokedWorkspaceIds: string[];
 }
 
 export interface WorkspaceResponse {

@@ -9,10 +9,13 @@ import {
   createChatSchema,
   extensionResponseSchema,
   openWorkspaceSchema,
+  projectSuggestionQuerySchema,
   renameSchema,
   resumeChatSchema,
   sendMessageSchema,
+  updateSettingsSchema,
   type BootstrapResponse,
+  type SettingsResponse,
   type WorkspaceResponse,
 } from "../shared/protocol.js";
 import { ChatRegistry } from "./chat-registry.js";
@@ -58,13 +61,37 @@ export function createApp(options: AppOptions) {
 
   app.get("/api/bootstrap", (_req, res) => {
     const response: BootstrapResponse = {
-      app: { name: "Pi Workbench", version: "0.1.0", piVersion: options.adapter.version, adapter: options.adapter.kind },
+      app: { name: "Pi Workbench", version: "0.2.0", piVersion: options.adapter.version, adapter: options.adapter.kind },
       csrfToken: security.csrfToken,
       workspaceHints: options.workspaceStore.hints(),
       workspaceRoots: options.workspaceStore.roots,
     };
     res.json(response);
   });
+
+  app.get("/api/projects/suggestions", route(async (req, res) => {
+    const query = parse(projectSuggestionQuerySchema, {
+      query: typeof req.query.query === "string" ? req.query.query : "",
+    });
+    res.json({ suggestions: await options.workspaceStore.suggest(query.query) });
+  }));
+
+  app.put("/api/settings", route(async (req, res) => {
+    const body = parse(updateSettingsSchema, req.body);
+    let updated;
+    try {
+      updated = await options.workspaceStore.updateRoots(body.workspaceRoots);
+    } catch (error) {
+      throw apiError(400, "INVALID_WORKSPACE_ROOTS", error instanceof Error ? error.message : "Allowed roots are invalid");
+    }
+    await chats.disposeWorkspaces(updated.revokedWorkspaceIds);
+    for (const workspaceId of updated.revokedWorkspaceIds) workspaceDetails.delete(workspaceId);
+    const response: SettingsResponse = {
+      workspaceRoots: updated.roots,
+      revokedWorkspaceIds: updated.revokedWorkspaceIds,
+    };
+    res.json(response);
+  }));
 
   app.post("/api/workspaces/open", route(async (req, res) => {
     const body = parse(openWorkspaceSchema, req.body);

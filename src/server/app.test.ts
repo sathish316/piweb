@@ -16,6 +16,7 @@ beforeEach(async () => {
   base = await mkdtemp(join(tmpdir(), "pi-web-app-"));
   workspace = join(base, "project");
   await mkdir(workspace);
+  await mkdir(join(base, "project-two"));
   store = await WorkspaceStore.create(base);
   adapter = new FakePiAdapter();
 });
@@ -63,6 +64,56 @@ describe("HTTP security and flows", () => {
       .set("X-Pi-CSRF", context.csrfToken)
       .send({ path: "x".repeat(140_000) })
       .expect(413);
+  });
+
+  it("autocompletes allowed project folders and persists validated root changes", async () => {
+    const context = createSecurityContext();
+    const { app } = createApp({ adapter, workspaceStore: store, security: context });
+    const short = await request(app).get("/api/projects/suggestions").query({ query: "pr" }).expect(200);
+    expect(short.body.suggestions).toEqual([]);
+    const suggested = await request(app).get("/api/projects/suggestions").query({ query: "pro" }).expect(200);
+    const canonicalWorkspace = join(store.roots[0] ?? base, "project");
+    expect(suggested.body.suggestions).toEqual([canonicalWorkspace, join(store.roots[0] ?? base, "project-two")]);
+
+    await request(app).put("/api/settings").send({ workspaceRoots: [workspace] }).expect(403);
+    const updated = await request(app)
+      .put("/api/settings")
+      .set("X-Pi-CSRF", context.csrfToken)
+      .send({ workspaceRoots: [workspace] })
+      .expect(200);
+    expect(updated.body.workspaceRoots).toEqual([canonicalWorkspace]);
+    const bootstrap = await request(app).get("/api/bootstrap").expect(200);
+    expect(bootstrap.body.workspaceRoots).toEqual([canonicalWorkspace]);
+
+    await request(app)
+      .put("/api/settings")
+      .set("X-Pi-CSRF", context.csrfToken)
+      .send({ workspaceRoots: [join(base, "missing")] })
+      .expect(400);
+  });
+
+  it("disposes live chats when settings revoke their workspace root", async () => {
+    const context = createSecurityContext();
+    const { app } = createApp({ adapter, workspaceStore: store, security: context });
+    const opened = await request(app)
+      .post("/api/workspaces/open")
+      .set("X-Pi-CSRF", context.csrfToken)
+      .send({ path: workspace })
+      .expect(200);
+    const created = await request(app)
+      .post("/api/chats")
+      .set("X-Pi-CSRF", context.csrfToken)
+      .send({ workspaceId: opened.body.workspaceId })
+      .expect(201);
+    const replacementRoot = join(base, "project-two");
+    const updated = await request(app)
+      .put("/api/settings")
+      .set("X-Pi-CSRF", context.csrfToken)
+      .send({ workspaceRoots: [replacementRoot] })
+      .expect(200);
+
+    expect(updated.body.revokedWorkspaceIds).toEqual([opened.body.workspaceId]);
+    await request(app).get(`/api/chats/${created.body.chatId}`).expect(404);
   });
 
   it("creates, streams, resumes, configures, compacts, renames, and completes an extension dialog", async () => {

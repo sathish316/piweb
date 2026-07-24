@@ -1,4 +1,10 @@
-import type { BootstrapResponse, ChatSnapshot, WorkspaceResponse } from "../shared/protocol";
+import type {
+  BootstrapResponse,
+  ChatSnapshot,
+  ProjectSuggestionsResponse,
+  SettingsResponse,
+  WorkspaceResponse,
+} from "../shared/protocol";
 
 let csrfToken = "";
 
@@ -10,6 +16,19 @@ export async function bootstrap(): Promise<BootstrapResponse> {
 
 export async function openWorkspace(path: string): Promise<WorkspaceResponse> {
   return mutation("/api/workspaces/open", "POST", { path });
+}
+
+export async function suggestProjects(query: string, signal?: AbortSignal): Promise<string[]> {
+  const params = new URLSearchParams({ query });
+  const value = await request<ProjectSuggestionsResponse>(
+    `/api/projects/suggestions?${params}`,
+    signal ? { signal } : undefined,
+  );
+  return value.suggestions;
+}
+
+export async function updateSettings(workspaceRoots: string[]): Promise<SettingsResponse> {
+  return mutation("/api/settings", "PUT", { workspaceRoots });
 }
 
 export async function createChat(workspaceId: string): Promise<ChatSnapshot> {

@@ -13,6 +13,7 @@ import type {
 import * as api from "./api";
 
 type ConnectionState = "connected" | "reconnecting" | "disconnected";
+type Surface = "home" | "workspace" | "settings";
 
 export function App() {
   const [boot, setBoot] = useState<BootstrapResponse>();
@@ -23,6 +24,7 @@ export function App() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [surface, setSurface] = useState<Surface>("home");
 
   useEffect(() => {
     void api.bootstrap().then((value) => {
@@ -50,6 +52,7 @@ export function App() {
     if (!value) return;
     setWorkspace(value);
     setChat(undefined);
+    setSurface("workspace");
     localStorage.setItem("pi-workbench.workspace", value.path);
   }
 
@@ -58,6 +61,7 @@ export function App() {
     const value = await run(() => api.createChat(workspace.workspaceId));
     if (value) {
       setChat(value);
+      setSurface("workspace");
       setWorkspace((current) => current ? {
         ...current,
         sessions: current.sessions.some((session) => session.id === value.sessionId)
@@ -80,8 +84,31 @@ export function App() {
     const value = await run(() => api.resumeChat(workspace.workspaceId, session.id));
     if (value) {
       setChat(value);
+      setSurface("workspace");
       setDrawerOpen(false);
     }
+  }
+
+  function showHome() {
+    setSurface("home");
+    setDrawerOpen(false);
+  }
+
+  function showSettings() {
+    setSurface("settings");
+    setDrawerOpen(false);
+  }
+
+  async function handleSaveSettings(workspaceRoots: string[]) {
+    const value = await run(() => api.updateSettings(workspaceRoots));
+    if (!value) return false;
+    setBoot((current) => current ? { ...current, workspaceRoots: value.workspaceRoots } : current);
+    if (workspace && value.revokedWorkspaceIds.includes(workspace.workspaceId)) {
+      setWorkspace(undefined);
+      setChat(undefined);
+      setConnection("disconnected");
+    }
+    return true;
   }
 
   return (
@@ -89,11 +116,12 @@ export function App() {
       <Sidebar
         open={drawerOpen}
         workspace={workspace}
-        workspacePath={workspacePath}
-        setWorkspacePath={setWorkspacePath}
-        onOpen={() => void handleOpenWorkspace()}
         onNew={() => void handleNew()}
         onResume={(session) => void handleResume(session)}
+        onChooseProject={showHome}
+        onSettings={showSettings}
+        activeSurface={surface}
+        rootCount={boot?.workspaceRoots.length ?? 0}
         busy={busy}
         close={() => setDrawerOpen(false)}
       />
@@ -104,7 +132,7 @@ export function App() {
             <MenuIcon />
           </button>
           <span className="mobile-title">Pi Workbench</span>
-          <ConnectionBadge state={connection} compact />
+          {chat ? <ConnectionBadge state={connection} compact /> : <span className="mobile-bar-spacer" aria-hidden="true" />}
         </header>
         {error && (
           <div className="global-error" role="alert">
@@ -112,7 +140,14 @@ export function App() {
             <button onClick={() => setError("")}>Dismiss</button>
           </div>
         )}
-        {!workspace ? (
+        {surface === "settings" ? (
+          <SettingsPanel
+            roots={boot?.workspaceRoots ?? []}
+            busy={busy}
+            save={handleSaveSettings}
+            back={showHome}
+          />
+        ) : surface === "home" || !workspace ? (
           <Welcome path={workspacePath} setPath={setWorkspacePath} open={() => void handleOpenWorkspace()} busy={busy} roots={boot?.workspaceRoots ?? []} />
         ) : !chat ? (
           <EmptyWorkspace workspace={workspace} onNew={() => void handleNew()} />
@@ -134,11 +169,12 @@ export function App() {
 function Sidebar(props: {
   open: boolean;
   workspace: WorkspaceResponse | undefined;
-  workspacePath: string;
-  setWorkspacePath: (value: string) => void;
-  onOpen: () => void;
   onNew: () => void;
   onResume: (session: SessionSummary) => void;
+  onChooseProject: () => void;
+  onSettings: () => void;
+  activeSurface: Surface;
+  rootCount: number;
   busy: boolean;
   close: () => void;
 }) {
@@ -169,23 +205,19 @@ function Sidebar(props: {
       <button className="new-chat" onClick={props.onNew} disabled={!props.workspace || props.busy}>
         <span aria-hidden="true">＋</span> New chat
       </button>
-      <label className="field-label" htmlFor="workspace-sidebar">Project</label>
-      <div className="path-field">
-        <input
-          id="workspace-sidebar"
-          value={props.workspacePath}
-          onChange={(event) => props.setWorkspacePath(event.target.value)}
-          aria-label="Project path"
-          spellCheck={false}
-        />
-        <button onClick={props.onOpen} disabled={props.busy}>Open</button>
-      </div>
+      <button
+        className={`project-switcher ${props.activeSurface === "home" ? "active" : ""}`}
+        onClick={props.onChooseProject}
+      >
+        <span className="project-switch-icon" aria-hidden="true">⌘</span>
+        <span>
+          <strong>{props.workspace ? basename(props.workspace.path) : "Choose a project"}</strong>
+          <small>{props.workspace ? "Switch project" : "Open a workspace"}</small>
+        </span>
+        <span className="project-switch-arrow" aria-hidden="true">→</span>
+      </button>
       {props.workspace && (
         <>
-          <div className="current-project" title={props.workspace.path}>
-            <span className={`trust-dot ${props.workspace.trusted ? "trusted" : "guarded"}`} />
-            <div><strong>{basename(props.workspace.path)}</strong><small>{props.workspace.path}</small></div>
-          </div>
           <div className="session-heading"><span>Recent sessions</span><span>{props.workspace.sessions.length}</span></div>
           <input
             className="session-search"
@@ -206,7 +238,17 @@ function Sidebar(props: {
           </nav>
         </>
       )}
-      <div className="sidebar-foot">Bound to this machine · no cloud relay</div>
+      <div className="sidebar-bottom">
+        <button
+          className={`settings-action ${props.activeSurface === "settings" ? "active" : ""}`}
+          onClick={props.onSettings}
+        >
+          <span aria-hidden="true">⚙</span>
+          <span>Settings</span>
+          <small>{props.rootCount} {props.rootCount === 1 ? "root" : "roots"}</small>
+        </button>
+        <div className="sidebar-foot">Bound to this machine · no cloud relay</div>
+      </div>
     </aside>
   );
 }
@@ -218,14 +260,210 @@ function Welcome(props: { path: string; setPath: (value: string) => void; open: 
       <p className="eyebrow">Pi is the agent. This is the window.</p>
       <h1>Pick up the work<br />where you left it.</h1>
       <p className="welcome-copy">Open a local project to start a native Pi session or resume an existing one. Your sessions, tools, models, and authentication stay with Pi.</p>
-      <div className="welcome-path">
+      <form className="welcome-path" onSubmit={(event) => { event.preventDefault(); props.open(); }}>
         <label htmlFor="workspace-welcome">Project directory</label>
         <div>
-          <input id="workspace-welcome" value={props.path} onChange={(event) => props.setPath(event.target.value)} spellCheck={false} />
-          <button onClick={props.open} disabled={props.busy}>{props.busy ? "Opening…" : "Open project"}</button>
+          <ProjectAutocomplete
+            id="workspace-welcome"
+            value={props.path}
+            setValue={props.setPath}
+            disabled={props.busy}
+          />
+          <button type="submit" disabled={props.busy}>{props.busy ? "Opening…" : "Open project"}</button>
         </div>
+      </form>
+      <p className="root-note">
+        Type three characters to find a project inside {props.roots.length === 1 ? "the allowed root" : `${props.roots.length} allowed roots`}.
+      </p>
+    </section>
+  );
+}
+
+function ProjectAutocomplete(props: {
+  id: string;
+  value: string;
+  setValue: (value: string) => void;
+  disabled: boolean;
+}) {
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [activeIndex, setActiveIndex] = useState(-1);
+  const [focused, setFocused] = useState(false);
+  const fragment = projectFragment(props.value);
+  const listId = `${props.id}-suggestions`;
+
+  useEffect(() => {
+    if (fragment.length < 3) {
+      setSuggestions([]);
+      setActiveIndex(-1);
+      return;
+    }
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      void api.suggestProjects(props.value, controller.signal)
+        .then((value) => {
+          setSuggestions(value.filter((path) => path !== props.value));
+          setActiveIndex(-1);
+        })
+        .catch((reason: unknown) => {
+          if (!(reason instanceof DOMException && reason.name === "AbortError")) setSuggestions([]);
+        });
+    }, 160);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [fragment, props.value]);
+
+  function choose(path: string) {
+    props.setValue(path);
+    setSuggestions([]);
+    setActiveIndex(-1);
+  }
+
+  function handleKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
+    if (event.key === "ArrowDown" && suggestions.length > 0) {
+      event.preventDefault();
+      setActiveIndex((current) => (current + 1) % suggestions.length);
+    } else if (event.key === "ArrowUp" && suggestions.length > 0) {
+      event.preventDefault();
+      setActiveIndex((current) => current <= 0 ? suggestions.length - 1 : current - 1);
+    } else if (event.key === "Enter" && activeIndex >= 0) {
+      event.preventDefault();
+      const selected = suggestions[activeIndex];
+      if (selected) choose(selected);
+    } else if (event.key === "Escape") {
+      setSuggestions([]);
+      setActiveIndex(-1);
+    }
+  }
+
+  const expanded = focused && suggestions.length > 0;
+  return (
+    <div className="project-autocomplete">
+      <input
+        id={props.id}
+        value={props.value}
+        onChange={(event) => props.setValue(event.target.value)}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+        onKeyDown={handleKeyDown}
+        role="combobox"
+        aria-autocomplete="list"
+        aria-expanded={expanded}
+        aria-controls={listId}
+        aria-activedescendant={activeIndex >= 0 ? `${listId}-${activeIndex}` : undefined}
+        autoComplete="off"
+        spellCheck={false}
+        disabled={props.disabled}
+      />
+      {expanded && (
+        <div className="project-suggestions" id={listId} role="listbox" aria-label="Matching project folders">
+          {suggestions.map((path, index) => (
+            <button
+              id={`${listId}-${index}`}
+              role="option"
+              aria-selected={index === activeIndex}
+              className={index === activeIndex ? "active" : ""}
+              type="button"
+              key={path}
+              onPointerDown={(event) => event.preventDefault()}
+              onClick={() => choose(path)}
+            >
+              <strong>{basename(path)}</strong>
+              <small>{path}</small>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SettingsPanel(props: {
+  roots: string[];
+  busy: boolean;
+  save: (roots: string[]) => Promise<boolean>;
+  back: () => void;
+}) {
+  const [draftRoots, setDraftRoots] = useState(() => props.roots.length > 0 ? props.roots : [""]);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    setDraftRoots(props.roots.length > 0 ? props.roots : [""]);
+  }, [props.roots]);
+
+  function updateRoot(index: number, value: string) {
+    setSaved(false);
+    setDraftRoots((current) => current.map((root, rootIndex) => rootIndex === index ? value : root));
+  }
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    const normalized = draftRoots.map((root) => root.trim()).filter(Boolean);
+    if (await props.save(normalized)) setSaved(true);
+  }
+
+  return (
+    <section className="settings-page">
+      <div className="settings-heading">
+        <p className="eyebrow">Workbench settings</p>
+        <h1>Workspace access</h1>
+        <p>Choose the Mac folders that contain your projects. Project autocomplete can only look inside these directories.</p>
       </div>
-      <p className="root-note">Allowed roots: {props.roots.join(", ") || "Loading…"}</p>
+      <form className="settings-form" onSubmit={(event) => void submit(event)}>
+        <div className="settings-section-heading">
+          <div>
+            <h2>Allowed folders</h2>
+            <p>Add project parent folders, such as <code>/Users/you/projects</code>.</p>
+          </div>
+          <span>{draftRoots.length} / 16</span>
+        </div>
+        <div className="root-editor">
+          {draftRoots.map((root, index) => (
+            <div className="root-row" key={index}>
+              <span className="root-index" aria-hidden="true">{String(index + 1).padStart(2, "0")}</span>
+              <label>
+                <span className="sr-only">Allowed folder {index + 1}</span>
+                <input
+                  value={root}
+                  onChange={(event) => updateRoot(index, event.target.value)}
+                  placeholder="/Users/you/projects"
+                  spellCheck={false}
+                  disabled={props.busy}
+                />
+              </label>
+              <button
+                type="button"
+                className="remove-root"
+                onClick={() => {
+                  setSaved(false);
+                  setDraftRoots((current) => current.filter((_, rootIndex) => rootIndex !== index));
+                }}
+                disabled={props.busy || draftRoots.length === 1}
+                aria-label={`Remove allowed folder ${index + 1}`}
+              >
+                Remove
+              </button>
+            </div>
+          ))}
+        </div>
+        <button
+          type="button"
+          className="add-root"
+          onClick={() => { setSaved(false); setDraftRoots((current) => [...current, ""]); }}
+          disabled={props.busy || draftRoots.length >= 16}
+        >
+          <span aria-hidden="true">＋</span> Add another folder
+        </button>
+        <div className="settings-actions">
+          <span className={saved ? "save-status visible" : "save-status"} role="status">Settings saved</span>
+          <button type="button" className="secondary-action" onClick={props.back}>Back to projects</button>
+          <button type="submit" className="primary-action" disabled={props.busy || draftRoots.some((root) => !root.trim())}>
+            {props.busy ? "Saving…" : "Save changes"}
+          </button>
+        </div>
+      </form>
+      <p className="settings-footnote">Paths are canonicalized before saving. Symlinks cannot escape an allowed folder.</p>
     </section>
   );
 }
@@ -633,6 +871,7 @@ function ConnectionBadge({ state, compact = false }: { state: ConnectionState; c
 }
 function MenuIcon() { return <span aria-hidden="true" className="menu-icon"><i /><i /><i /></span>; }
 function basename(path: string) { return path.replace(/[\\/]+$/, "").split(/[\\/]/).pop() || path; }
+function projectFragment(path: string) { return path.trim().split(/[\\/]/).pop() ?? ""; }
 function capitalize(value: string) { return value.charAt(0).toUpperCase() + value.slice(1); }
 function formatRelative(value: string) {
   const difference = Date.now() - new Date(value).getTime();

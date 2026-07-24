@@ -1,22 +1,43 @@
 import { randomBytes, randomUUID } from "node:crypto";
-import { realpath, stat } from "node:fs/promises";
-import { homedir } from "node:os";
-import { delimiter, isAbsolute, relative, resolve } from "node:path";
+import { mkdir, readFile, readdir, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
+import { homedir, platform } from "node:os";
+import { basename, delimiter, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import type { NextFunction, Request, Response } from "express";
 
 export class WorkspaceStore {
   private readonly workspaces = new Map<string, string>();
-  private constructor(readonly roots: string[]) {}
+  private _roots: string[];
+  private constructor(roots: string[], private readonly settingsFile?: string) {
+    this._roots = roots;
+  }
 
-  static async create(raw = process.env.WORKSPACE_ROOTS): Promise<WorkspaceStore> {
-    const candidates = raw ? raw.split(delimiter).filter(Boolean) : [homedir()];
-    const roots: string[] = [];
-    for (const candidate of candidates) {
-      const canonical = await realpath(resolve(candidate));
-      if ((await stat(canonical)).isDirectory() && !roots.includes(canonical)) roots.push(canonical);
+  static async create(
+    raw = process.env.WORKSPACE_ROOTS,
+    options: { settingsFile?: string } = {},
+  ): Promise<WorkspaceStore> {
+    const settingsFile = options.settingsFile ? resolve(options.settingsFile) : undefined;
+    const saved = settingsFile ? await readSavedRoots(settingsFile) : undefined;
+    const candidates = saved ?? (raw ? raw.split(delimiter).filter(Boolean) : [homedir()]);
+    const roots = await canonicalizeRoots(candidates);
+    return new WorkspaceStore(roots, settingsFile);
+  }
+
+  get roots(): string[] {
+    return [...this._roots];
+  }
+
+  async updateRoots(candidates: string[]): Promise<{ roots: string[]; revokedWorkspaceIds: string[] }> {
+    const roots = await canonicalizeRoots(candidates);
+    if (this.settingsFile) await writeSavedRoots(this.settingsFile, roots);
+    const revokedWorkspaceIds: string[] = [];
+    for (const [id, workspace] of this.workspaces) {
+      if (!roots.some((root) => isDescendant(root, workspace))) {
+        this.workspaces.delete(id);
+        revokedWorkspaceIds.push(id);
+      }
     }
-    if (roots.length === 0) throw new Error("WORKSPACE_ROOTS does not contain an accessible directory");
-    return new WorkspaceStore(roots);
+    this._roots = roots;
+    return { roots: this.roots, revokedWorkspaceIds };
   }
 
   async open(candidate: string): Promise<{ id: string; path: string }> {
@@ -24,7 +45,7 @@ export class WorkspaceStore {
     const absolute = isAbsolute(candidate) ? candidate : resolve(candidate);
     const canonical = await realpath(absolute);
     if (!(await stat(canonical)).isDirectory()) throw new Error("Workspace must be an existing directory");
-    if (!this.roots.some((root) => isDescendant(root, canonical))) {
+    if (!this._roots.some((root) => isDescendant(root, canonical))) {
       throw new Error("Workspace is outside WORKSPACE_ROOTS");
     }
     const existing = [...this.workspaces].find(([, value]) => value === canonical);
@@ -42,9 +63,67 @@ export class WorkspaceStore {
 
   hints(): string[] {
     return [...new Set([...this.workspaces.values(), process.cwd()])].filter((candidate) =>
-      this.roots.some((root) => isDescendant(root, candidate)),
+      this._roots.some((root) => isDescendant(root, candidate)),
     ).slice(0, 8);
   }
+
+  async suggest(query: string): Promise<string[]> {
+    const input = query.trim();
+    const fragment = basename(input);
+    if (fragment.length < 3) return [];
+
+    let parents = this._roots;
+    if (isAbsolute(input)) {
+      try {
+        const parent = await realpath(dirname(input));
+        if (!this._roots.some((root) => isDescendant(root, parent))) return [];
+        parents = [parent];
+      } catch {
+        return [];
+      }
+    }
+
+    const matches: Array<{ path: string; canonical: string }> = [];
+    const seen = new Set<string>();
+    for (const parent of parents) {
+      let entries;
+      try {
+        entries = await readdir(parent, { withFileTypes: true });
+      } catch {
+        continue;
+      }
+      const candidates = entries
+        .filter((entry) => (entry.isDirectory() || entry.isSymbolicLink()) && entry.name.toLowerCase().startsWith(fragment.toLowerCase()))
+        .sort((left, right) => left.name.localeCompare(right.name));
+      for (const entry of candidates) {
+        const candidate = join(parent, entry.name);
+        try {
+          const canonical = await realpath(candidate);
+          if (
+            !seen.has(canonical)
+            && (await stat(canonical)).isDirectory()
+            && this._roots.some((root) => isDescendant(root, canonical))
+          ) {
+            seen.add(canonical);
+            matches.push({ path: candidate, canonical });
+          }
+        } catch {
+          // Entries can disappear while suggestions are being built.
+        }
+      }
+    }
+    return matches
+      .sort((left, right) => basename(left.path).localeCompare(basename(right.path)) || left.path.localeCompare(right.path))
+      .slice(0, 12)
+      .map((match) => match.path);
+  }
+}
+
+export function settingsFilePath(): string {
+  if (process.env.PI_WORKBENCH_SETTINGS_PATH) return resolve(process.env.PI_WORKBENCH_SETTINGS_PATH);
+  if (platform() === "darwin") return join(homedir(), "Library", "Application Support", "Pi Workbench", "settings.json");
+  if (platform() === "win32" && process.env.APPDATA) return join(process.env.APPDATA, "Pi Workbench", "settings.json");
+  return join(process.env.XDG_CONFIG_HOME || join(homedir(), ".config"), "pi-workbench", "settings.json");
 }
 
 export function isDescendant(root: string, candidate: string): boolean {
@@ -135,4 +214,59 @@ function splitList(value: string | undefined): string[] {
 
 function sendSecurityError(res: Response, status: number, code: string, message: string): void {
   res.status(status).json({ error: { code, message } });
+}
+
+async function canonicalizeRoots(candidates: string[]): Promise<string[]> {
+  const roots: string[] = [];
+  for (const candidate of candidates) {
+    try {
+      const canonical = await realpath(resolve(candidate));
+      if ((await stat(canonical)).isDirectory() && !roots.includes(canonical)) roots.push(canonical);
+    } catch {
+      throw new Error(`Allowed root is not an accessible directory: ${candidate}`);
+    }
+  }
+  if (roots.length === 0) throw new Error("At least one accessible allowed root is required");
+  return roots;
+}
+
+async function readSavedRoots(settingsFile: string): Promise<string[] | undefined> {
+  let text: string;
+  try {
+    text = await readFile(settingsFile, "utf8");
+  } catch (error) {
+    if (isNodeError(error) && error.code === "ENOENT") return undefined;
+    throw error;
+  }
+  try {
+    const parsed = JSON.parse(text) as { workspaceRoots?: unknown };
+    if (
+      !Array.isArray(parsed.workspaceRoots)
+      || parsed.workspaceRoots.length === 0
+      || !parsed.workspaceRoots.every((root) => typeof root === "string" && root.trim())
+    ) {
+      throw new Error("workspaceRoots must be a non-empty string array");
+    }
+    return parsed.workspaceRoots;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "invalid JSON";
+    throw new Error(`Pi Workbench settings are invalid: ${message}`);
+  }
+}
+
+async function writeSavedRoots(settingsFile: string, roots: string[]): Promise<void> {
+  const directory = dirname(settingsFile);
+  const temporary = `${settingsFile}.tmp-${process.pid}-${randomUUID()}`;
+  await mkdir(directory, { recursive: true, mode: 0o700 });
+  try {
+    await writeFile(temporary, `${JSON.stringify({ workspaceRoots: roots }, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+    await rename(temporary, settingsFile);
+  } catch (error) {
+    await rm(temporary, { force: true }).catch(() => undefined);
+    throw error;
+  }
+}
+
+function isNodeError(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error && "code" in error;
 }

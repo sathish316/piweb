@@ -15,7 +15,7 @@ export default defineConfig({
     { name: "mobile-chromium", use: { ...devices["iPhone 13"], browserName: "chromium", viewport: { width: 390, height: 844 } } },
   ],
   webServer: {
-    command: "npm run build && PI_WEB_ADAPTER=fake npm start",
+    command: "npm run build && PI_WEB_ADAPTER=fake PI_WORKBENCH_SETTINGS_PATH=test-results/e2e-settings.json npm start",
     url: "http://127.0.0.1:4783/api/health",
     reuseExistingServer: false,
     timeout: 120_000,

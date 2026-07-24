@@ -2,12 +2,12 @@ import { createServer } from "node:http";
 import { createApp } from "./app.js";
 import { FakePiAdapter } from "./pi/fake-adapter.js";
 import { RealPiAdapter } from "./pi/real-adapter.js";
-import { WorkspaceStore } from "./security.js";
+import { settingsFilePath, WorkspaceStore } from "./security.js";
 
 const host = "127.0.0.1";
 const port = parsePort(process.env.PORT);
 const adapter = process.env.PI_WEB_ADAPTER === "fake" ? new FakePiAdapter() : new RealPiAdapter();
-const workspaceStore = await WorkspaceStore.create();
+const workspaceStore = await WorkspaceStore.create(process.env.WORKSPACE_ROOTS, { settingsFile: settingsFilePath() });
 const { app } = createApp({ adapter, workspaceStore, production: process.env.NODE_ENV === "production" });
 const server = createServer(app);
 

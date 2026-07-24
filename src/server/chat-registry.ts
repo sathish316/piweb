@@ -97,6 +97,14 @@ export class ChatRegistry {
     await live.pi.dispose();
   }
 
+  async disposeWorkspaces(workspaceIds: string[]): Promise<void> {
+    const revoked = new Set(workspaceIds);
+    const chatIds = [...this.chats.values()]
+      .filter((chat) => revoked.has(chat.workspaceId))
+      .map((chat) => chat.id);
+    await Promise.all(chatIds.map((id) => this.dispose(id)));
+  }
+
   connect(id: string, response: Response, lastEventId: number | undefined): () => void {
     const live = this.require(id);
     live.subscribers.add(response);

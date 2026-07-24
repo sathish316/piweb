@@ -80,12 +80,18 @@ The exact `0.79.8` package currently brings two shrinkwrapped npm advisories (`b
 - Native sessions are normally under its `sessions/` child, but the dashboard never hard-codes that root
 - The selected canonical project path is Pi’s `cwd`
 
-Workspace candidates are canonicalized with `realpath` and checked against canonical `WORKSPACE_ROOTS` using filesystem-aware descendant checks. `WORKSPACE_ROOTS` is platform path-delimited and defaults to the home directory:
+Open **Settings** at the bottom of the sidebar to configure one or more allowed project folders. Settings are stored locally as non-secret JSON at `~/Library/Application Support/Pi Workbench/settings.json` on macOS (the platform config directory is used on Linux and Windows). Saving a narrower list immediately revokes opaque workspace IDs and live dashboard chats that fall outside the new roots.
+
+On first run, before a settings file exists, roots are seeded from `WORKSPACE_ROOTS`. It is platform path-delimited and defaults to the home directory:
 
 ```bash
 # macOS/Linux: allow home and an external volume
 WORKSPACE_ROOTS="$HOME:/Volumes/Projects" npm start
 ```
+
+Add directories that directly contain projects, such as `~/projects`. On the project home, typing the first three characters of a project name autocompletes matching child directories inside the allowed roots. An absolute partial path can also autocomplete within an allowed parent. The project switcher directly below **New chat** returns to this home from any chat.
+
+Workspace candidates and configured roots are canonicalized with `realpath` and checked using filesystem-aware descendant rules. Symlink and string-prefix escapes are rejected. `PI_WORKBENCH_SETTINGS_PATH` can point to a different non-secret settings file for an isolated installation or test environment.
 
 Project-local settings, extensions, prompts, skills, and context load only when Pi’s existing trust store already allows them. The dashboard never silently approves trust. If resources are guarded, open Pi locally to make the trust decision, then reopen the project.
 
@@ -145,7 +151,7 @@ npm run test:e2e        # Chromium desktop and mobile
 npm run build           # production frontend + server
 ```
 
-The tests cover canonical workspace containment and symlink escapes, path-prefix traps, secret redaction, bounded outputs, single session ownership, stream replay IDs, queue/abort/settled behavior, extension dialog round trips, request limits, local/Tailscale origin and CSRF checks, URL schemes, desktop streaming/resume/stop, mobile drawer/composer, reconnection, and keyboard interaction.
+The tests cover canonical workspace containment and symlink escapes, path-prefix traps, persisted allowed roots, bounded project autocomplete, secret redaction, bounded outputs, single session ownership, stream replay IDs, queue/abort/settled behavior, extension dialog round trips, request limits, local/Tailscale origin and CSRF checks, URL schemes, desktop settings/project switching/streaming/resume/stop, mobile drawer/composer, reconnection, and keyboard interaction.
 
 An explicit, no-prompt real Pi smoke allocates a native session and lists/resumes an existing saved session without contacting a model:
 
@@ -167,7 +173,7 @@ It is never run by the default suite. It does not force an empty JSONL write bec
 
 ## Optional always-available mode (macOS)
 
-This host is macOS. A per-user LaunchAgent can run the absolute Node binary and compiled server entry with `RunAtLoad` and `KeepAlive`, while keeping the server on `127.0.0.1`. It should preserve only non-secret values such as `PORT`, `WORKSPACE_ROOTS`, Pi directory overrides, and allowed Tailscale hosts/users. It must not copy API keys or arbitrary interactive-shell environment values. Pi authentication should use stored `/login` credentials or a deliberate OS-native secret mechanism.
+This host is macOS. A per-user LaunchAgent can run the absolute Node binary and compiled server entry with `RunAtLoad` and `KeepAlive`, while keeping the server on `127.0.0.1`. It should preserve only non-secret values such as `PORT`, initial `WORKSPACE_ROOTS`, an optional `PI_WORKBENCH_SETTINGS_PATH`, Pi directory overrides, and allowed Tailscale hosts/users. It must not copy API keys or arbitrary interactive-shell environment values. Pi authentication should use stored `/login` credentials or a deliberate OS-native secret mechanism.
 
 No background service is installed by this project. Manual `npm start` remains the default.
 
