@@ -624,7 +624,10 @@ button:disabled, input:disabled, textarea:disabled, select:disabled { cursor: no
     width: var(--app-viewport-width, 100vw);
     height: var(--app-viewport-height, 100dvh);
     overflow: hidden;
-    transform: translate(var(--app-viewport-left, 0), var(--app-viewport-top, 0));
+    transform: translate(
+      var(--app-viewport-left, 0px),
+      calc(var(--app-viewport-top, 0px) - var(--app-keyboard-lift, 0px))
+    );
     transform-origin: top left;
   }
   .app-shell {

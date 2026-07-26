@@ -183,6 +183,50 @@ test.describe("mobile workbench", () => {
     expect(resumedBounds.bottom).toBeCloseTo(396, 0);
   });
 
+  test("lifts the focused composer above a keyboard the page transform misses", async ({ page }) => {
+    await page.goto("/");
+    await page.locator("#workspace-welcome").fill(workspace);
+    await page.getByRole("button", { name: "Open project" }).click();
+    await page.getByRole("button", { name: "Start a new chat" }).click();
+    await page.getByLabel("Message Pi").click();
+    await expect(page.getByLabel("Message Pi")).toBeFocused();
+
+    // Safari reports a page scrolled to the focused field while the visible band stays at the top,
+    // which pushes the composer below the keyboard until the measured lift pulls it back
+    const keyboardTop = await page.evaluate(() => {
+      const viewport = window.visualViewport;
+      if (!viewport) throw new Error("Visual viewport is unavailable");
+      const shrunk = { width: 390, height: 360, offsetLeft: 0, offsetTop: 0, pageLeft: 0, pageTop: 300, scale: 1 };
+      for (const [property, value] of Object.entries(shrunk)) {
+        Object.defineProperty(viewport, property, { configurable: true, get: () => value });
+      }
+      viewport.dispatchEvent(new Event("resize"));
+      return shrunk.height;
+    });
+
+    await expect.poll(
+      () => page.locator(".composer-shell").evaluate((shell) => Math.round(shell.getBoundingClientRect().bottom)),
+      { timeout: 5_000 },
+    ).toBeLessThanOrEqual(keyboardTop);
+
+    const lifted = await page.evaluate(() => ({
+      lift: document.documentElement.style.getPropertyValue("--app-keyboard-lift"),
+      composerTop: document.querySelector(".composer-shell")!.getBoundingClientRect().top,
+      textareaBottom: document.querySelector(".composer textarea")!.getBoundingClientRect().bottom,
+    }));
+    expect(Number.parseFloat(lifted.lift)).toBeCloseTo(300, 0);
+    expect(lifted.composerTop).toBeGreaterThanOrEqual(0);
+    expect(lifted.textareaBottom).toBeLessThanOrEqual(keyboardTop);
+    await expect(page.getByRole("button", { name: /Send/ })).toBeInViewport();
+
+    // Dismissing the keyboard must hand the lift back, or the app stays shifted up
+    await page.getByLabel("Message Pi").blur();
+    await expect.poll(
+      () => page.evaluate(() => document.documentElement.style.getPropertyValue("--app-keyboard-lift")),
+      { timeout: 5_000 },
+    ).toBe("0px");
+  });
+
   test("keeps the workbench stable while repeatedly queueing from a short viewport", async ({ page }) => {
     await page.goto("/");
     await page.locator("#workspace-welcome").fill(workspace);
