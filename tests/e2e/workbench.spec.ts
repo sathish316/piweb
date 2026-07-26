@@ -90,6 +90,11 @@ test.describe("mobile workbench", () => {
     await page.getByRole("button", { name: "New chat", exact: true }).click();
     await page.getByLabel("Message Pi").fill("Mobile stream");
     await page.getByRole("button", { name: /Send/ }).click();
+    await expect(page.getByLabel("Message Pi")).toBeInViewport();
+    const streamingComposerBottom = await page.locator(".composer-shell").evaluate(
+      (shell) => shell.getBoundingClientRect().bottom,
+    );
+    expect(streamingComposerBottom).toBeCloseTo(844, 0);
     await expect(page.locator(".tool-row").first()).toBeVisible();
     await expect(page.getByText(/settled state are working/)).toBeVisible();
     const bodyWidth = await page.evaluate(() => document.body.scrollWidth);
@@ -105,29 +110,128 @@ test.describe("mobile workbench", () => {
     await expect(page.getByLabel("Sessions")).not.toHaveClass(/open/);
   });
 
-  test("keeps the focused composer and Send button inside a keyboard-sized viewport", async ({ page }) => {
+  test("keeps the focused composer visible after app resume and keyboard resize", async ({ page }) => {
     await page.goto("/");
     await page.locator("#workspace-welcome").fill(workspace);
     await page.getByRole("button", { name: "Open project" }).click();
     await page.getByRole("button", { name: "Start a new chat" }).click();
-    await page.setViewportSize({ width: 390, height: 430 });
+    await page.setViewportSize({ width: 430, height: 430 });
     await page.getByLabel("Message Pi").fill("Keyboard layout");
 
     const bounds = await page.evaluate(() => {
+      const shell = document.querySelector(".composer-shell")?.getBoundingClientRect();
       const composer = document.querySelector(".composer")?.getBoundingClientRect();
       const send = document.querySelector(".send-button")?.getBoundingClientRect();
+      const textarea = document.querySelector<HTMLTextAreaElement>(".composer textarea");
       return {
+        shellBottom: shell?.bottom ?? Number.POSITIVE_INFINITY,
         composerRight: composer?.right ?? Number.POSITIVE_INFINITY,
         composerBottom: composer?.bottom ?? Number.POSITIVE_INFINITY,
         sendRight: send?.right ?? Number.POSITIVE_INFINITY,
         sendBottom: send?.bottom ?? Number.POSITIVE_INFINITY,
+        textareaFontSize: textarea ? Number.parseFloat(getComputedStyle(textarea).fontSize) : 0,
       };
     });
 
-    expect(bounds.composerRight).toBeLessThanOrEqual(390);
+    expect(bounds.shellBottom).toBeLessThanOrEqual(430);
+    expect(bounds.shellBottom).toBeGreaterThan(400);
+    expect(bounds.composerRight).toBeLessThanOrEqual(430);
     expect(bounds.composerBottom).toBeLessThanOrEqual(430);
-    expect(bounds.sendRight).toBeLessThanOrEqual(390);
+    expect(bounds.sendRight).toBeLessThanOrEqual(430);
     expect(bounds.sendBottom).toBeLessThanOrEqual(430);
+    expect(bounds.textareaFontSize).toBeGreaterThanOrEqual(16);
     await expect(page.getByRole("button", { name: /Send/ })).toBeVisible();
+
+    await page.evaluate(() => {
+      const viewport = window.visualViewport;
+      const textarea = document.querySelector<HTMLTextAreaElement>(".composer textarea");
+      if (!viewport || !textarea) throw new Error("Visual viewport or composer is unavailable");
+
+      const resumedViewport = {
+        width: 348,
+        height: 360,
+        offsetLeft: 18,
+        offsetTop: 36,
+        pageLeft: 18,
+        pageTop: 36,
+        scale: 1.2,
+      };
+      for (const [property, value] of Object.entries(resumedViewport)) {
+        Object.defineProperty(viewport, property, { configurable: true, get: () => value });
+      }
+
+      const root = document.documentElement;
+      root.style.setProperty("--app-viewport-width", "430px");
+      root.style.setProperty("--app-viewport-height", "844px");
+      root.style.setProperty("--app-viewport-left", "0px");
+      root.style.setProperty("--app-viewport-top", "0px");
+
+      document.dispatchEvent(new Event("visibilitychange"));
+      textarea.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
+    });
+
+    await expect.poll(() => page.evaluate(() => ({
+      width: document.documentElement.style.getPropertyValue("--app-viewport-width"),
+      height: document.documentElement.style.getPropertyValue("--app-viewport-height"),
+      left: document.documentElement.style.getPropertyValue("--app-viewport-left"),
+      top: document.documentElement.style.getPropertyValue("--app-viewport-top"),
+    }))).toEqual({ width: "348px", height: "360px", left: "18px", top: "36px" });
+
+    const resumedBounds = await page.locator(".composer-shell").evaluate((shell) => shell.getBoundingClientRect().toJSON());
+    expect(resumedBounds.left).toBeGreaterThanOrEqual(18);
+    expect(resumedBounds.right).toBeLessThanOrEqual(366);
+    expect(resumedBounds.bottom).toBeCloseTo(396, 0);
+  });
+
+  test("keeps the workbench stable while repeatedly queueing from a short viewport", async ({ page }) => {
+    await page.goto("/");
+    await page.locator("#workspace-welcome").fill(workspace);
+    await page.getByRole("button", { name: "Open project" }).click();
+    await page.getByRole("button", { name: "Start a new chat" }).click();
+
+    await page.getByLabel("Message Pi").fill("/demo-dialog");
+    await page.getByRole("button", { name: /Send/ }).click();
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await page.getByRole("dialog").evaluate((dialog: HTMLDialogElement) => dialog.close());
+
+    await page.setViewportSize({ width: 320, height: 360 });
+    const textarea = page.getByLabel("Message Pi");
+    for (let index = 1; index <= 6; index += 1) {
+      await textarea.fill(`Queued mobile task ${index}`);
+      await page.getByRole("button", { name: index % 2 === 0 ? "Follow-up" : "Steer" }).click();
+    }
+
+    await expect(page.getByText("6 queued", { exact: true })).toBeVisible();
+    await expect(textarea).toBeInViewport();
+    await expect(textarea).toBeFocused();
+
+    const layout = await page.evaluate(() => {
+      const rect = (selector: string) => document.querySelector(selector)?.getBoundingClientRect().toJSON();
+      return {
+        bodyWidth: document.body.scrollWidth,
+        root: rect("#root"),
+        chat: rect(".chat-view"),
+        toolbar: rect(".chat-toolbar"),
+        conversation: rect(".conversation-wrap"),
+        composer: rect(".composer-shell"),
+        actions: [...document.querySelectorAll<HTMLElement>(".composer-actions button")].map(
+          (button) => button.getBoundingClientRect().toJSON(),
+        ),
+      };
+    });
+
+    expect(layout.bodyWidth).toBeLessThanOrEqual(320);
+    for (const region of [layout.root, layout.chat, layout.toolbar, layout.conversation, layout.composer]) {
+      expect(region).toBeDefined();
+      expect(region!.left).toBeGreaterThanOrEqual(0);
+      expect(region!.right).toBeLessThanOrEqual(320);
+      expect(region!.width).toBeGreaterThan(0);
+    }
+    expect(layout.composer!.bottom).toBeCloseTo(360, 0);
+    expect(layout.actions).toHaveLength(3);
+    for (const action of layout.actions) {
+      expect(action.left).toBeGreaterThanOrEqual(layout.composer!.left);
+      expect(action.right).toBeLessThanOrEqual(layout.composer!.right);
+    }
   });
 });

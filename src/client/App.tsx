@@ -686,6 +686,12 @@ function Composer({ chat, reportError }: { chat: ChatSnapshot; reportError: (val
     }
   }
 
+  function preserveComposerFocus(event: React.PointerEvent<HTMLButtonElement>) {
+    if (event.pointerType !== "mouse" || window.matchMedia("(max-width: 820px)").matches) {
+      event.preventDefault();
+    }
+  }
+
   return (
     <div className="composer-shell">
       <div className="composer">
@@ -707,14 +713,14 @@ function Composer({ chat, reportError }: { chat: ChatSnapshot; reportError: (val
           aria-label="Message Pi"
           rows={1}
         />
-        <div className="composer-actions">
+        <div className={`composer-actions ${active ? "queueing" : "idle"}`}>
           <div className="queue-summary">
             {active ? `${chat.queue.steering + chat.queue.followUp} queued` : "Enter to send · Shift+Enter for newline"}
           </div>
           {active ? (
             <>
-              <button className="queue-button" onClick={() => void send("steer")} disabled={!draft.trim()}>Steer</button>
-              <button className="queue-button" onClick={() => void send("followUp")} disabled={!draft.trim()}>Follow-up</button>
+              <button className="queue-button" onPointerDown={preserveComposerFocus} onClick={() => void send("steer")} disabled={!draft.trim()}>Steer</button>
+              <button className="queue-button" onPointerDown={preserveComposerFocus} onClick={() => void send("followUp")} disabled={!draft.trim()}>Follow-up</button>
               <button className="stop-button" onClick={() => void api.abortChat(chat.chatId).catch((reason: Error) => reportError(reason.message))}>
                 <span aria-hidden="true">■</span> Stop
               </button>
