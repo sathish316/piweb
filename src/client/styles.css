@@ -624,7 +624,10 @@ button:disabled, input:disabled, textarea:disabled, select:disabled { cursor: no
     width: var(--app-viewport-width, 100vw);
     height: var(--app-viewport-height, 100dvh);
     overflow: hidden;
-    transform: translate(var(--app-viewport-left, 0), var(--app-viewport-top, 0));
+    transform: translate(
+      var(--app-viewport-left, 0px),
+      calc(var(--app-viewport-top, 0px) - var(--app-keyboard-lift, 0px))
+    );
     transform-origin: top left;
   }
   .app-shell {
@@ -648,7 +651,7 @@ button:disabled, input:disabled, textarea:disabled, select:disabled { cursor: no
   .sidebar.open { transform: translateX(0); }
   .drawer-close.icon-button { display: grid; width: 44px; height: 44px; font-size: 24px; }
   .scrim { position: fixed; z-index: 15; inset: 0; display: block; width: 100%; height: 100%; border: 0; background: rgb(12 20 28 / 48%); }
-  .main-column { height: 100%; }
+  .main-column { width: 100%; height: 100%; min-height: 0; overflow: hidden; }
   .mobile-bar {
     display: flex;
     height: var(--mobile-bar-height);
@@ -682,13 +685,26 @@ button:disabled, input:disabled, textarea:disabled, select:disabled { cursor: no
   .save-status { flex-basis: 100%; height: 15px; }
   .settings-actions button { min-height: 44px; }
   .empty-workspace { height: calc(100% - var(--mobile-bar-height)); }
-  .chat-view { height: calc(100% - var(--mobile-bar-height)); }
+  .chat-view {
+    display: flex;
+    width: 100%;
+    height: calc(100% - var(--mobile-bar-height));
+    min-height: 0;
+    flex-direction: column;
+    overflow: hidden;
+  }
   .chat-toolbar {
     display: grid;
+    width: 100%;
+    max-width: 100%;
+    min-height: 0;
+    min-width: 0;
+    flex: 0 1 auto;
     grid-template-columns: minmax(0, 1fr);
     gap: 8px;
     padding: 9px 10px 10px;
-    overflow: visible;
+    overflow-x: hidden;
+    overflow-y: auto;
   }
   .chat-identity { min-height: 32px; padding: 0 2px; }
   .chat-identity button { min-height: 32px; padding: 0 6px; }
@@ -702,6 +718,7 @@ button:disabled, input:disabled, textarea:disabled, select:disabled { cursor: no
   .agent-controls label { min-width: 0; }
   .agent-controls select { width: 100%; max-width: none; min-width: 0; height: 38px; }
   .compact-button { width: 100%; height: 36px; grid-column: 1 / -1; }
+  .conversation-wrap { width: 100%; max-width: 100%; min-height: 0; min-width: 0; flex: 1 1 0; overflow: hidden; }
   .conversation { padding: 22px 14px 45px; }
   .message { grid-template-columns: 34px minmax(0, 1fr); gap: 9px; margin-bottom: 23px; }
   .message-label { font-size: 8px; }
@@ -711,8 +728,13 @@ button:disabled, input:disabled, textarea:disabled, select:disabled { cursor: no
   .tool-row summary { grid-template-columns: auto auto minmax(0, 1fr); min-height: 44px; }
   .tool-row summary small { display: none; }
   .composer-shell {
+    position: relative;
+    z-index: 6;
     width: 100%;
     min-width: 0;
+    max-width: 100%;
+    flex: 0 0 auto;
+    contain: inline-size;
     padding:
       8px
       max(9px, env(safe-area-inset-right))
@@ -722,12 +744,25 @@ button:disabled, input:disabled, textarea:disabled, select:disabled { cursor: no
   .composer { width: 100%; min-width: 0; max-width: 100%; }
   .composer textarea {
     max-height: min(220px, max(72px, calc(var(--app-viewport-height, 100dvh) - 300px)));
+    font-size: 16px;
   }
   .composer-actions { width: 100%; min-width: 0; flex-wrap: wrap; }
+  .composer-actions.queueing {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
   .queue-summary { flex-basis: 100%; order: -1; height: 16px; }
+  .composer-actions.queueing .queue-summary { width: 100%; grid-column: 1 / -1; }
   .queue-button, .stop-button, .send-button { min-height: 44px; }
-  .composer-actions > button { max-width: 100%; flex: 0 0 auto; }
-  .stop-button, .send-button { margin-left: auto; }
+  .composer-actions > button { max-width: 100%; min-width: 0; flex: 0 0 auto; }
+  .composer-actions.queueing > button {
+    width: 100%;
+    overflow: hidden;
+    padding-inline: clamp(6px, 3vw, 12px);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .composer-actions.idle .send-button { margin-left: auto; }
   .tool-warning { display: none; }
   .command-menu button { grid-template-columns: 110px 1fr; }
 }
@@ -741,7 +776,6 @@ button:disabled, input:disabled, textarea:disabled, select:disabled { cursor: no
   .compact-button { padding: 0 8px; font-size: 10px; }
   .message { grid-template-columns: 28px minmax(0, 1fr); gap: 7px; }
   .tool-row, .notice, .working-line { margin-left: 35px; }
-  .composer textarea { font-size: 16px; }
   .queue-button, .stop-button { padding: 0 9px; }
   .settings-section-heading { display: block; }
   .settings-section-heading > span { display: block; margin-top: 8px; }
